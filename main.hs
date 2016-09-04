@@ -1,7 +1,6 @@
 import Data.Char
-import Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.Map.Lazy as Map.Lazy
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 
 data SexNode = List [SexNode] | Atom String
     deriving Show
@@ -95,8 +94,7 @@ uniteMapsOfTypesWith f a b = sequenceA ( Map.unionWith (\(Result (Right a)) -> \
 
 
 
-data ValidatorState = ValidatorState (Map String Type) SexNode
-    deriving Show
+data ValidatorState = ValidatorState (String -> Maybe Type) SexNode
 
 getType :: ValidatorState -> Result String Type
 getType (ValidatorState scope sexpression) =
@@ -108,10 +106,15 @@ getType (ValidatorState scope sexpression) =
           List [Atom ('\'':token), value] -> (\value -> Enum $ Map.fromList [(token,value)]) <$> getTypeConsideringScope value
           -- choose simulates what will happen to types during conditionals
           List [Atom "choose", value1, value2] -> mergeExpTypes `fmap` getTypeConsideringScope value1 =<<* getTypeConsideringScope value2
-          List [(Atom "letrec"),List definitions,body] -> let additionalScope = (\fs -> getObjectType fs definitions) =<<< fullScope
-                                                              fullScope = (\as -> Map.Lazy.union scope as) `fmap` additionalScope
+          List [(Atom "letrec"),List definitions,body] -> let additionalScope = (\fs -> getObjectType fs definitions) fullScopeFunction
+                                                              fullScopeFunction key =
+                                                                  case additionalScope of
+                                                                    Result (Right as) -> if Map.member key as
+                                                                                            then Just (as Map.! key)
+                                                                                            else scope key
+                                                                    _ -> Nothing
                                                               getTypeOfBody fs = getType (ValidatorState fs body)
-                                                           in getTypeOfBody =<<< fullScope
+                                                           in getTypeOfBody fullScopeFunction
           node -> err $ "invalid syntax: "++ show node
 
 
@@ -129,7 +132,7 @@ f =<<< (Result a) =
 
 
 
-getObjectType :: (Map String Type) -> [SexNode] -> Result String (Map String Type)
+getObjectType :: (String -> Maybe Type) -> [SexNode] -> Result String (Map String Type)
 getObjectType scope rest = foldl appendToObject (ok Map.empty) (map processPair rest)
     where processPair (List [Atom key, value]) = (\value -> (key,value)) <$> getType (ValidatorState scope value)
           processPair exp = err ("Incorrect sexpression '" ++ show exp ++ "' in object literal.")
@@ -142,8 +145,8 @@ getObjectType scope rest = foldl appendToObject (ok Map.empty) (map processPair 
 
 
 
-rootGetType string = getType (ValidatorState Map.empty (parseSexpression string))
+rootGetType string = getType (ValidatorState (\_ -> Nothing) (parseSexpression string))
 
 
 
-main = do putStrLn (show (rootGetType "(letrec (a ()) ()"))
+main = do putStrLn (show (rootGetType "(letrec ((a ())) ()"))
