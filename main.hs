@@ -115,6 +115,10 @@ getType (ValidatorState scope sexpression) =
                                                                     _ -> Nothing
                                                               getTypeOfBody fs = getType (ValidatorState fs body)
                                                            in getTypeOfBody fullScopeFunction
+          Atom name -> case scope name of
+                         Just t -> ok t
+                         Nothing -> err $ "The variable '"++ name ++"' isn't defined."
+
           node -> err $ "invalid syntax: "++ show node
 
 
@@ -149,4 +153,4 @@ rootGetType string = getType (ValidatorState (\_ -> Nothing) (parseSexpression s
 
 
 
-main = do putStrLn (show (rootGetType "(letrec ((a ())) ()"))
+main = do putStrLn (show (rootGetType "(letrec ((a (object)) (b ()) ) a"))
