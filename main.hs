@@ -1,6 +1,7 @@
 import Data.Char
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Map.Lazy as Map.Lazy
 
 data SexNode = List [SexNode] | Atom String
     deriving Show
@@ -102,10 +103,15 @@ getType (ValidatorState scope sexpression) =
     let getTypeConsideringScope value = getType (ValidatorState scope value)
      in case sexpression of
           List [] -> pure Unit
-          List ((Atom "object"):rest) -> getObjectType scope rest
+          List ((Atom "object"):rest) -> Object `fmap` getObjectType scope rest
           Atom ('\'':token) -> pure $ Enum $ Map.fromList [(token,Unit)]
           List [Atom ('\'':token), value] -> (\value -> Enum $ Map.fromList [(token,value)]) <$> getTypeConsideringScope value
+          -- choose simulates what will happen to types during conditionals
           List [Atom "choose", value1, value2] -> mergeExpTypes `fmap` getTypeConsideringScope value1 =<<* getTypeConsideringScope value2
+          List [(Atom "letrec"),List definitions,body] -> let additionalScope = (\fs -> getObjectType fs definitions) =<<< fullScope
+                                                              fullScope = (\as -> Map.Lazy.union scope as) `fmap` additionalScope
+                                                              getTypeOfBody fs = getType (ValidatorState fs body)
+                                                           in getTypeOfBody =<<< fullScope
           node -> err $ "invalid syntax: "++ show node
 
 
@@ -116,11 +122,15 @@ getType (ValidatorState scope sexpression) =
       (Left es, _) -> Result $ Left es
       (_, Left es) -> Result $ Left es
 
+f =<<< (Result a) =
+    case a of
+      Right a' -> f a'
+      Left e -> Result $ Left $ e
 
 
 
-getObjectType :: (Map String Type) -> [SexNode] -> Result String Type
-getObjectType scope rest = Object `fmap` foldl appendToObject (ok Map.empty) (map processPair rest)
+getObjectType :: (Map String Type) -> [SexNode] -> Result String (Map String Type)
+getObjectType scope rest = foldl appendToObject (ok Map.empty) (map processPair rest)
     where processPair (List [Atom key, value]) = (\value -> (key,value)) <$> getType (ValidatorState scope value)
           processPair exp = err ("Incorrect sexpression '" ++ show exp ++ "' in object literal.")
           appendToObject :: Result String (Map String Type) -> Result String (String, Type) -> Result String (Map String Type)
@@ -136,4 +146,4 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 
 
-main = do putStrLn (show (rootGetType "(choose (object (b (object)) (c ())) (object (a ()) (b ()) ))"))
+main = do putStrLn (show (rootGetType "(letrec (a ()) ()"))
