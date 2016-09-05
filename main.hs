@@ -155,9 +155,9 @@ getType (ValidatorState scope sexpression) =
 
           List [function, parameter] -> let funcType = getTypeConsideringScope function
                                             paramType = getTypeConsideringScope parameter
-                                         in callFunc `fmap` funcType =<<* paramType
-                                        where callFunc (Function (FunctionType func)) param = func param
-                                              callFunc notFunction _ = err $ "'" ++ show notFunction ++ "' is not a function."
+                                         in (getFunc =<<< funcType) =<<* paramType
+                                        where getFunc (Function (FunctionType func)) = pure func
+                                              getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
 
           Atom name -> case Map.lookup name scope of
                          Just t -> ok t
@@ -183,4 +183,4 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 
 
-main = do putStrLn (show (rootGetType "(match (choose 'a 'b) (('a _) 'b) (('b _) 'c))"))
+main = do putStrLn (show (rootGetType "(let ((fun (lambda a (match a (('a _) 'memes) (('b _) 'lel))))) (object (a (fun 'a)) (b (fun 'b) )"))
