@@ -108,10 +108,15 @@ getType (ValidatorState scope sexpression) =
           List [Atom ('\'':token), value] -> (\value -> Enum $ Map.fromList [(token,value)]) <$> getTypeConsideringScope value
           -- choose simulates what will happen to types during conditionals
           List [Atom "choose", value1, value2] -> mergeExpTypes `fmap` getTypeConsideringScope value1 =<<* getTypeConsideringScope value2
-          List [(Atom "letrec"),List definitions,body] -> let additionalScope = (\fs -> getObjectType fs definitions) =<<< fullScope
-                                                              fullScope = (\as -> Map.Lazy.union scope as) `fmap` additionalScope
+          List [(Atom "let"   ),List definitions,body] -> let additionalScope = getObjectType scope definitions
+                                                              fullScope = (\as -> Map.Lazy.union as scope) `fmap` additionalScope
                                                               getTypeOfBody fs = getType (ValidatorState fs body)
                                                            in getTypeOfBody =<<< fullScope
+
+          Atom name -> case Map.lookup name scope of
+                         Just t -> ok t
+                         Nothing -> err $ "The variable '"++ name ++"' isn't defined."
+
           node -> err $ "invalid syntax: "++ show node
 
 
@@ -146,4 +151,4 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 
 
-main = do putStrLn (show (rootGetType "(letrec (a ()) ()"))
+main = do putStrLn (show (rootGetType "(let ((a (object))) a"))
