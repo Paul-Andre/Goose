@@ -73,7 +73,9 @@ data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function 
 
 mergeExpTypes :: Type -> Type -> Result String Type
 mergeExpTypes Unit _ = pure Unit
+mergeExpTypes _ Unit = pure Unit
 mergeExpTypes Any other = pure other
+mergeExpTypes other Any = pure other
 mergeExpTypes (Object a) (Object b) = Object <$> intersectMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Enum a) (Enum b) = Enum <$> uniteMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeReqTypes aIn bIn) <*> (mergeExpTypes aOut bOut)
@@ -120,7 +122,7 @@ getType (ValidatorState scope sexpression) =
                                                     Nothing -> err $ "The object "++ show (Object map)++" has no property '"++ property ++"'."
                     lookupProperty other = err $ "'"++ show other++"' isn't an object."
 
-          List [(Atom "match"), enum, List branches] -> match `fmap` getTypeConsideringScope enum =<<* branchMap
+          List ((Atom "match"): enum: branches) -> match `fmap` getTypeConsideringScope enum =<<* branchMap
               where processBranch (List [(List [(Atom ('\'':token)), (Atom name)]), body]) = pure (token, (name, body))
                     processBranch other = err $ "Invalid syntax in branch '"++show other++"'."
                     branchMap = Map.fromList `fmap` sequenceA (map processBranch branches)
@@ -170,4 +172,4 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 
 
-main = do putStrLn (show (rootGetType "(let ((a (object (b 'lel)))) (-> a b)"))
+main = do putStrLn (show (rootGetType "(match (choose 'a 'b) (('a _) 'b) (('b _) 'c))"))
