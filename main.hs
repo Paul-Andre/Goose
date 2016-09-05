@@ -56,10 +56,21 @@ instance Applicative (Result e) where
           (Left es, _) -> Left es
           (_, Left es) -> Left es
 
+(Result f) =<<* (Result a) =
+    case (f, a) of
+      (Right f', Right a') -> f' a'
+      (Left fes, Left aes) -> Result $ Left $ fes ++ aes
+      (Left es, _) -> Result $ Left es
+      (_, Left es) -> Result $ Left es
 
+f =<<< (Result a) =
+    case a of
+      Right a' -> f a'
+      Left e -> Result $ Left $ e
 
 ok a = Result $ Right a
 err e = Result $ Left [e]
+
 
 
 data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function Type Type | Any
@@ -139,20 +150,6 @@ getType (ValidatorState scope sexpression) =
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
 
           node -> err $ "invalid syntax: "++ show node
-
-
-(Result f) =<<* (Result a) =
-    case (f, a) of
-      (Right f', Right a') -> f' a'
-      (Left fes, Left aes) -> Result $ Left $ fes ++ aes
-      (Left es, _) -> Result $ Left es
-      (_, Left es) -> Result $ Left es
-
-f =<<< (Result a) =
-    case a of
-      Right a' -> f a'
-      Left e -> Result $ Left $ e
-
 
 
 getObjectType :: (Map String Type) -> [SexNode] -> Result String (Map String Type)
