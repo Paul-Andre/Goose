@@ -62,7 +62,7 @@ ok a = Result $ Right a
 err e = Result $ Left [e]
 
 
-data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function Type Type
+data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function Type Type | Any
     deriving Show
 
 {-- There is two kinds of types when type checking "expression types" and "required types".
@@ -72,7 +72,8 @@ data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function 
 
 
 mergeExpTypes :: Type -> Type -> Result String Type
-mergeExpTypes Unit Unit = pure Unit
+mergeExpTypes Unit _ = pure Unit
+mergeExpTypes Any other = pure other
 mergeExpTypes (Object a) (Object b) = Object <$> intersectMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Enum a) (Enum b) = Enum <$> uniteMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeReqTypes aIn bIn) <*> (mergeExpTypes aOut bOut)
@@ -118,6 +119,19 @@ getType (ValidatorState scope sexpression) =
                                                     Just t -> ok t
                                                     Nothing -> err $ "The object "++ show (Object map)++" has no property '"++ property ++"'."
                     lookupProperty other = err $ "'"++ show other++"' isn't an object."
+
+          List [(Atom "match"), enum, List branches] -> match `fmap` getTypeConsideringScope enum =<<* branchMap
+              where processBranch (List [(List [(Atom ('\'':token)), (Atom name)]), body]) = pure (token, (name, body))
+                    processBranch other = err $ "Invalid syntax in branch '"++show other++"'."
+                    branchMap = Map.fromList `fmap` sequenceA (map processBranch branches)
+                    match (Enum enum) branches = if Map.isSubmapOfBy (\_-> \_->True) enum branches
+                                                    then (Map.fold mergeBranchTypes (pure Any)) =<<< (sequenceA ( Map.intersectionWith getBranchType enum branches))
+                                                    else err ( "Enum "++show enum++" isn't a submap of match branches "++show branches++".")
+
+                    mergeBranchTypes a b = (mergeExpTypes a) =<<< b
+                    getBranchType :: Type -> (String, SexNode) -> Result String Type
+                    getBranchType enumValue (name, body) = getType (ValidatorState (Map.insert name enumValue scope) body)
+
           Atom name -> case Map.lookup name scope of
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
