@@ -113,6 +113,11 @@ getType (ValidatorState scope sexpression) =
                                                               getTypeOfBody fs = getType (ValidatorState fs body)
                                                            in getTypeOfBody =<<< fullScope
 
+          List [(Atom "->"), object, (Atom property)] -> lookupProperty =<<< getTypeConsideringScope object
+              where lookupProperty (Object map) = case Map.lookup property map of
+                                                    Just t -> ok t
+                                                    Nothing -> err $ "The object "++ show (Object map)++" has no property '"++ property ++"'."
+                    lookupProperty other = err $ "'"++ show other++"' isn't an object."
           Atom name -> case Map.lookup name scope of
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
@@ -151,4 +156,4 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 
 
-main = do putStrLn (show (rootGetType "(let ((a (object))) a"))
+main = do putStrLn (show (rootGetType "(let ((a (object (b 'lel)))) (-> a b)"))
