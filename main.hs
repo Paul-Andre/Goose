@@ -72,9 +72,14 @@ ok a = Result $ Right a
 err e = Result $ Left [e]
 
 
+newtype FunctionType = FunctionType (Type -> Result String Type)
 
-data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function Type Type | Any
+instance Show FunctionType where
+    show f = "[function]"
+
+data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function FunctionType | Any
     deriving Show
+
 
 {-- There is two kinds of types when type checking "expression types" and "required types".
     Expression are the types that are usually known, like when creating an object, you know what its properties are.
@@ -89,7 +94,7 @@ mergeExpTypes Any other = pure other
 mergeExpTypes other Any = pure other
 mergeExpTypes (Object a) (Object b) = Object <$> intersectMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Enum a) (Enum b) = Enum <$> uniteMapsOfTypesWith mergeExpTypes a b
-mergeExpTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeReqTypes aIn bIn) <*> (mergeExpTypes aOut bOut)
+mergeExpTypes (Function (FunctionType a)) (Function (FunctionType b)) = (pure . Function . FunctionType) $ (\t -> ((mergeExpTypes <$> a t) =<<* b t))
 mergeExpTypes a b = err $ "Cannot merge expression types '" ++ show a ++ "' and '" ++ show b ++ "'.\n"
 
 
@@ -97,7 +102,7 @@ mergeReqTypes :: Type -> Type -> Result String Type
 mergeReqTypes Unit Unit = pure Unit
 mergeReqTypes (Object a) (Object b) = Object <$> uniteMapsOfTypesWith mergeReqTypes a b
 mergeReqTypes (Enum a) (Enum b) = Enum <$> intersectMapsOfTypesWith mergeReqTypes a b 
-mergeReqTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeExpTypes aIn bIn) <*> (mergeReqTypes aOut bOut)
+-- mergeReqTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeExpTypes aIn bIn) <*> (mergeReqTypes aOut bOut)
 mergeReqTypes a b = err $ "Cannot merge required types '" ++ show a ++ "' and '" ++ show b ++ "'.\n"
 
 
