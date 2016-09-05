@@ -150,6 +150,15 @@ getType (ValidatorState scope sexpression) =
                     getBranchType :: Type -> (String, SexNode) -> Result String Type
                     getBranchType enumValue (name, body) = getType (ValidatorState (Map.insert name enumValue scope) body)
 
+          List [(Atom "lambda"), (Atom parameterName), body] -> (pure . Function . FunctionType) (\t ->
+              getType (ValidatorState (Map.insert parameterName t scope) body))
+
+          List [function, parameter] -> let funcType = getTypeConsideringScope function
+                                            paramType = getTypeConsideringScope parameter
+                                         in callFunc `fmap` funcType =<<* paramType
+                                        where callFunc (Function (FunctionType func)) param = func param
+                                              callFunc notFunction _ = err $ "'" ++ show notFunction ++ "' is not a function."
+
           Atom name -> case Map.lookup name scope of
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
