@@ -2,6 +2,7 @@ import Data.Char
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Lazy as Map.Lazy
+import qualified Debug.Trace
 
 data SexNode = List [SexNode] | Atom String
     deriving Show
@@ -81,9 +82,8 @@ data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function 
     deriving Show
 
 
-{-- There is two kinds of types when type checking "expression types" and "required types".
-    Expression are the types that are usually known, like when creating an object, you know what its properties are.
-    Required types are the types that are the inputs of functions.
+{-- In the current type-checking system, we need to know the types of all values always.
+ Because of this, functions are only type-checked when they are called.
 --}
 
 
@@ -151,15 +151,15 @@ getType (ValidatorState scope sexpression) =
                     getBranchType enumValue (name, body) = getType (ValidatorState (Map.insert name enumValue scope) body)
 
           List [(Atom "lambda"), (Atom parameterName), body] -> (pure . Function . FunctionType) (\t ->
-              getType (ValidatorState (Map.insert parameterName t scope) body))
+              Debug.Trace.trace ("evaluated the body of lambda "++show body) (getType (ValidatorState (Map.insert parameterName t scope) body)))
 
-          List [function, parameter] -> let funcType = getTypeConsideringScope function
-                                            paramType = getTypeConsideringScope parameter
-                                         in (getFunc =<<< funcType) =<<* paramType
+          List [function, parameter] -> let funcType = Debug.Trace.trace ("got funcType " ++ show function) (getTypeConsideringScope function)
+                                            paramType = Debug.Trace.trace ("got paramType " ++ show parameter) (getTypeConsideringScope parameter)
+                                         in Debug.Trace.trace ("evaluated function") ((Debug.Trace.trace "first part of func" (getFunc =<<< funcType)) =<<* paramType)
                                         where getFunc (Function (FunctionType func)) = pure func
                                               getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
 
-          Atom name -> case Map.lookup name scope of
+          Atom name -> case (Debug.Trace.trace ("lookuped value of "++name) (Map.lookup name scope)) of
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
 
@@ -182,5 +182,12 @@ getObjectType scope rest = foldl appendToObject (ok Map.empty) (map processPair 
 rootGetType string = getType (ValidatorState Map.empty (parseSexpression string))
 
 
+example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
+example'' = rootGetType "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) 'a)"
+example = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda z (f (z z))))))) (y (lambda _ ())))"
 
-main = do putStrLn (show (rootGetType "(let ((fun (lambda a (match a (('a _) 'memes) (('b _) 'lel))))) (object (a (fun 'a)) (b (fun 'b) )"))
+exampleCorrect = case example of
+                   (Result (Right _)) -> True
+                   _ -> False
+
+main = do putStrLn (show example)
