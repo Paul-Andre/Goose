@@ -78,9 +78,10 @@ newtype FunctionType = FunctionType (Type -> Result String Type)
 instance Show FunctionType where
     show f = "[function]"
 
-data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function FunctionType | Any
+data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function FunctionType | Potential (Result String Type) | Any
     deriving Show
 
+-- Potential is used in situations where we don't want to determine if an expression had any errors just yet. This should avoid infinite loops in some cases
 
 {-- In the current type-checking system, we need to know the types of all values always.
  Because of this, functions are only type-checked when they are called.
@@ -154,12 +155,13 @@ getType (ValidatorState scope sexpression) =
               Debug.Trace.trace ("evaluated the body of lambda "++show body) (getType (ValidatorState (Map.insert parameterName t scope) body)))
 
           List [function, parameter] -> let funcType = Debug.Trace.trace ("got funcType " ++ show function) (getTypeConsideringScope function)
-                                            paramType = Debug.Trace.trace ("got paramType " ++ show parameter) (getTypeConsideringScope parameter)
-                                         in Debug.Trace.trace ("evaluated function") ((Debug.Trace.trace "first part of func" (getFunc =<<< funcType)) =<<* paramType)
-                                        where getFunc (Function (FunctionType func)) = pure func
-                                              getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
+                                            paramType = Debug.Trace.trace ("got paramType " ++ show parameter) (Potential (getTypeConsideringScope parameter))
+                                            getFunc (Function (FunctionType func)) = func paramType
+                                            getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
+                                         in Debug.Trace.trace ("evaluated function") (Debug.Trace.trace "first part of func" (getFunc =<<< funcType))
 
           Atom name -> case (Debug.Trace.trace ("lookuped value of "++name) (Map.lookup name scope)) of
+                         Just ( Potential t) -> t
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
 
