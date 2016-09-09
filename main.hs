@@ -158,7 +158,7 @@ getType (ValidatorState scope sexpression) =
                                             paramType = Debug.Trace.trace ("got paramType " ++ show parameter) (Potential (getTypeConsideringScope parameter))
                                             getFunc (Function (FunctionType func)) = func paramType
                                             getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
-                                         in Debug.Trace.trace ("evaluated function") (Debug.Trace.trace "first part of func" (getFunc =<<< funcType))
+                                         in Debug.Trace.trace ("evaluated function ("++show function++ "  "++show parameter++")" ) ((getFunc =<<< funcType))
 
           Atom name -> case (Debug.Trace.trace ("lookuped value of "++name) (Map.lookup name scope)) of
                          Just ( Potential t) -> t
@@ -186,7 +186,7 @@ rootGetType string = getType (ValidatorState Map.empty (parseSexpression string)
 
 example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
 example'' = rootGetType "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) 'a)"
-example = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda z (f (z z))))))) (y (lambda _ ())))"
+example = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda z (f (z z))))))) (y (lambda g (lambda _ g)))"
 
 exampleCorrect = case example of
                    (Result (Right _)) -> True
