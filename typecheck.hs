@@ -41,14 +41,14 @@ parseSexpressionList = (List).fst.parseList.removeBeginingSpace
 
 
 
-newtype Result e a = Result { runResult :: Either [e] a }
+newtype Result a = Result { runResult :: Either [String] a }
     deriving (Show, Eq, Ord)
 
-instance Functor (Result e) where
+instance Functor (Result) where
     fmap f (Result (Right a)) = Result $ Right $ f a
     fmap _ (Result (Left es)) = Result $ Left es
 
-instance Applicative (Result e) where
+instance Applicative (Result) where
     pure a = Result $ Right a
     (Result f) <*> (Result a) = Result $
         case (f, a) of
@@ -72,23 +72,31 @@ f =<<< (Result a) =
 ok a = Result $ Right a
 err e = Result $ Left [e]
 
-data FunctionType = FunctionType String SexNode (Map String Type)
+type Dict = Map String
+
+
+data FunctionType = FunctionType String SexNode (Dict Type)
     deriving (Show, Eq, Ord)
 
-data Type = Unit | Object (Map String Type) | Enum (Map String Type) | Function [FunctionType] | Potential (Result String Type) | Any
+data Type = Unit | Object (Dict Type) | Enum (Dict Type) | Function [FunctionType] | Incomplete (Result Type) Type | Any
     deriving (Show, Eq, Ord)
-
--- Potential is used in situations where we don't want to determine if an expression had any errors just yet. This should avoid infinite loops in some cases
 
 {-- In the current type-checking system, we need to know the types of all values always.
  Because of this, functions are only type-checked when they are called.
 --}
 
-callWithType :: [FunctionType] -> Type -> Result String Type
-callWithType functions inType =  foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (pure Any) mapped 
-    where mapped = (map (\(FunctionType paramName body scope) -> getType (ValidatorState (Map.insert paramName inType scope) body) ) functions)
+callWithType :: [FunctionType] -> Type -> (Map ([FunctionType],Type) Type) -> Result Type
+callWithType functions inType previouslyCalled = if Map.member (functions,inType) previouslyCalled
+    then case previouslyCalled Map.! (functions,inType) of
+        Incomplete unknown known -> pure known
+        theType -> pure theType
+    else theType
+        where theType = foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (pure Any) mapped 
+                  where mapped = (map evaluate functions)
+                        evaluate (FunctionType paramName body scope) = getType state 
+                            where state = ValidatorState (Map.insert paramName inType scope) (Map.insert (functions,inType) (Incomplete theType Any) previouslyCalled) body
 
-mergeExpTypes :: Type -> Type -> Result String Type
+mergeExpTypes :: Type -> Type -> Result Type
 mergeExpTypes Unit _ = pure Unit
 mergeExpTypes _ Unit = pure Unit
 mergeExpTypes Any other = pure other
@@ -96,40 +104,43 @@ mergeExpTypes other Any = pure other
 mergeExpTypes (Object a) (Object b) = Object <$> intersectMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Enum a) (Enum b) = Enum <$> uniteMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Function a) (Function b) = pure (Function (a++b))
+mergeExpTypes (Incomplete unknown known) other = (Incomplete unknown) <$> mergeExpTypes known other
+mergeExpTypes other (Incomplete unknown known)= (Incomplete unknown) <$> mergeExpTypes other known
 mergeExpTypes a b = err $ "Cannot merge expression types '" ++ show a ++ "' and '" ++ show b ++ "'.\n"
 
-mergeReqTypes :: Type -> Type -> Result String Type
-mergeReqTypes Unit Unit = pure Unit
-mergeReqTypes (Object a) (Object b) = Object <$> uniteMapsOfTypesWith mergeReqTypes a b
-mergeReqTypes (Enum a) (Enum b) = Enum <$> intersectMapsOfTypesWith mergeReqTypes a b 
--- mergeReqTypes (Function aIn aOut) (Function bIn bOut) = Function <$> (mergeExpTypes aIn bIn) <*> (mergeReqTypes aOut bOut)
-mergeReqTypes a b = err $ "Cannot merge required types '" ++ show a ++ "' and '" ++ show b ++ "'.\n"
 
-
-intersectMapsOfTypesWith :: (Type -> Type -> Result String Type) -> Map String Type -> Map String Type -> Result String (Map String Type)
+intersectMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 intersectMapsOfTypesWith f a b = sequenceA $ Map.intersectionWith f a b
-
-uniteMapsOfTypesWith :: (Type -> Type -> Result String Type) -> Map String Type -> Map String Type -> Result String (Map String Type)
+uniteMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 uniteMapsOfTypesWith f a b = sequenceA ( Map.unionWith (\(Result (Right a)) -> \(Result (Right b)) -> f a b) (fmap pure a) (fmap pure b))
 
 
 
-data ValidatorState = ValidatorState (Map String Type) SexNode
+data ValidatorState = ValidatorState (Dict Type) (Map ([FunctionType], Type) Type) SexNode
     deriving (Show, Eq, Ord)
 
-getType :: ValidatorState -> Result String Type
-getType (ValidatorState scope sexpression) =
-    let getTypeConsideringScope value = getType (ValidatorState scope value)
+getType :: ValidatorState -> Result Type
+getType (ValidatorState scope calledFunctions sexpression) =
+    let getTypeConsideringScope value = getType (ValidatorState scope calledFunctions value)
+        getObjectType :: [SexNode] -> Result (Dict Type)
+        getObjectType rest = foldl appendToObject (ok Map.empty) (map processPair rest)
+            where processPair (List [Atom key, value]) = (\value -> (key,value)) <$> getTypeConsideringScope value
+                  processPair exp = err ("Incorrect sexpression '" ++ show exp ++ "' in object literal.")
+                  appendToObject :: Result (Dict Type) -> Result (String, Type) -> Result (Dict Type)
+                  appendToObject map entry= appendUnwrappedToObject `fmap` entry =<<* map
+                      where appendUnwrappedToObject (key,value) map = if Map.notMember key map
+                                                                         then ok $ Map.insert key value map
+                                                                         else err $ "Key '"++ key ++"' defined multiple times"
      in case sexpression of
           List [] -> pure Unit
-          List ((Atom "object"):rest) -> Object `fmap` getObjectType scope rest
+          List ((Atom "object"):rest) -> Object `fmap` getObjectType rest
           Atom ('\'':token) -> pure $ Enum $ Map.fromList [(token,Unit)]
           List [Atom ('\'':token), value] -> (\value -> Enum $ Map.fromList [(token,value)]) <$> getTypeConsideringScope value
           -- choose simulates what will happen to types during conditionals
           List [Atom "choose", value1, value2] -> mergeExpTypes `fmap` getTypeConsideringScope value1 =<<* getTypeConsideringScope value2
-          List [(Atom "let"   ),List definitions,body] -> let additionalScope = getObjectType scope definitions
+          List [(Atom "let"   ),List definitions,body] -> let additionalScope = getObjectType definitions
                                                               fullScope = (\as -> Map.Lazy.union as scope) `fmap` additionalScope
-                                                              getTypeOfBody fs = getType (ValidatorState fs body)
+                                                              getTypeOfBody fs = getType (ValidatorState fs calledFunctions body)
                                                            in getTypeOfBody =<<< fullScope
 
           List [(Atom "->"), object, (Atom property)] -> lookupProperty =<<< getTypeConsideringScope object
@@ -147,39 +158,30 @@ getType (ValidatorState scope sexpression) =
                                                     else err ( "Enum "++show enum++" isn't a submap of match branches "++show branches++".")
 
                     mergeBranchTypes a b = (mergeExpTypes a) =<<< b
-                    getBranchType :: Type -> (String, SexNode) -> Result String Type
-                    getBranchType enumValue (name, body) = getType (ValidatorState (Map.insert name enumValue scope) body)
+                    getBranchType :: Type -> (String, SexNode) -> Result Type
+                    getBranchType enumValue (name, body) = getType (ValidatorState (Map.insert name enumValue scope) calledFunctions body)
 
           List [(Atom "lambda"), (Atom parameterName), body] -> pure.Function $ [(FunctionType parameterName body scope)]
 
           List [function, parameter] -> let funcType = getTypeConsideringScope function
-                                            paramType = Potential (getTypeConsideringScope parameter)
-                                            getFunc (Function functions) = callWithType functions paramType
+                                            paramType = Incomplete (getTypeConsideringScope parameter) Any
+                                            getFunc (Function functions) = callWithType functions paramType calledFunctions
                                             getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
                                          in Debug.Trace.trace ("evaluated function ("++show function++ "  "++show parameter++")" ) ((getFunc =<<< funcType))
 
           Atom name -> case (Debug.Trace.trace ("lookuped value of "++name) (Map.lookup name scope)) of
-                         Just ( Potential t) -> t
+                         Just (Incomplete t other) -> (\t -> (mergeExpTypes t other)) =<<< t
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
 
           node -> err $ "invalid syntax: "++ show node
 
 
-getObjectType :: (Map String Type) -> [SexNode] -> Result String (Map String Type)
-getObjectType scope rest = foldl appendToObject (ok Map.empty) (map processPair rest)
-    where processPair (List [Atom key, value]) = (\value -> (key,value)) <$> getType (ValidatorState scope value)
-          processPair exp = err ("Incorrect sexpression '" ++ show exp ++ "' in object literal.")
-          appendToObject :: Result String (Map String Type) -> Result String (String, Type) -> Result String (Map String Type)
-          appendToObject map entry= appendUnwrappedToObject `fmap` entry =<<* map
-              where appendUnwrappedToObject (key,value) map = if Map.notMember key map
-                                                                 then ok $ Map.insert key value map
-                                                                 else err $ "Key '"++ key ++"' defined multiple times"
       
 
 
 
-rootGetType string = getType (ValidatorState Map.empty (parseSexpression string))
+rootGetType string = getType (ValidatorState Map.empty Map.empty (parseSexpression string))
 
 
 example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
