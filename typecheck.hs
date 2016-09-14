@@ -164,13 +164,13 @@ getType (ValidatorState scope calledFunctions sexpression) =
           List [(Atom "lambda"), (Atom parameterName), body] -> pure.Function $ [(FunctionType parameterName body scope)]
 
           List [function, parameter] -> let funcType = getTypeConsideringScope function
-                                            paramType = Incomplete (getTypeConsideringScope parameter) Any
-                                            getFunc (Function functions) = callWithType functions paramType calledFunctions
+                                            paramType = getTypeConsideringScope parameter
+                                            getFunc (Function functions) = pure (\paramType -> callWithType functions paramType calledFunctions)
                                             getFunc notFunction = err $ "'" ++ show notFunction ++ "' is not a function."
-                                         in Debug.Trace.trace ("evaluated function ("++show function++ "  "++show parameter++")" ) ((getFunc =<<< funcType))
+                                         in Debug.Trace.trace ("evaluated function ("++show function++ "  "++show parameter++")" ) ((getFunc =<<< funcType) =<<* paramType )
 
           Atom name -> case (Debug.Trace.trace ("lookuped value of "++name) (Map.lookup name scope)) of
-                         Just (Incomplete t other) -> (\t -> (mergeExpTypes t other)) =<<< t
+                         --Just (Incomplete t other) -> (\t -> (mergeExpTypes t other)) =<<< t
                          Just t -> ok t
                          Nothing -> err $ "The variable '"++ name ++"' isn't defined."
 
@@ -185,11 +185,11 @@ rootGetType string = getType (ValidatorState Map.empty Map.empty (parseSexpressi
 
 
 example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
-example'' = rootGetType "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) 'a)"
-example = rootGetType "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) (y 'a))"
+example'' = rootGetType "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) (lambda f (choose ('a f) 'b)))"
+example = rootGetType "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) y)"
 
 exampleCorrect = case example of
                    (Result (Right _)) -> True
                    _ -> False
 
-main = do putStrLn (show example)
+main = do putStrLn (show example'')
