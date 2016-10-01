@@ -4,6 +4,8 @@ import qualified Data.Map as Map
 import qualified Data.Map.Lazy as Map.Lazy
 import qualified Debug.Trace
 
+
+
 data SexNode = List [SexNode] | Atom String
     deriving (Show, Eq, Ord)
 
@@ -72,6 +74,8 @@ f =<<< (Result a) =
 ok a = Result $ Right a
 err e = Result $ Left [e]
 
+
+
 type Dict = Map String
 
 
@@ -80,21 +84,6 @@ data FunctionType = FunctionType String SexNode (Dict Type)
 
 data Type = Unit | Object (Dict Type) | Enum (Dict Type) | Function [FunctionType] | Incomplete (Result Type) Type | Any
     deriving (Show, Eq, Ord)
-
-{-- In the current type-checking system, we need to know the types of all values always.
- Because of this, functions are only type-checked when they are called.
---}
-
-callWithType :: [FunctionType] -> Type -> (Map ([FunctionType],Type) Type) -> Result Type
-callWithType functions inType previouslyCalled = if Map.member (functions,inType) previouslyCalled
-    then case previouslyCalled Map.! (functions,inType) of
-        Incomplete unknown known -> pure known
-        theType -> pure theType
-    else theType
-        where theType = foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (pure Any) mapped 
-                  where mapped = (map evaluate functions)
-                        evaluate (FunctionType paramName body scope) = getType state 
-                            where state = ValidatorState (Map.insert paramName inType scope) (Map.insert (functions,inType) (Incomplete theType Any) previouslyCalled) body
 
 mergeExpTypes :: Type -> Type -> Result Type
 mergeExpTypes Unit _ = pure Unit
@@ -111,13 +100,24 @@ mergeExpTypes a b = err $ "Cannot merge expression types '" ++ show a ++ "' and 
 
 intersectMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 intersectMapsOfTypesWith f a b = sequenceA $ Map.intersectionWith f a b
+
 uniteMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 uniteMapsOfTypesWith f a b = sequenceA ( Map.unionWith (\(Result (Right a)) -> \(Result (Right b)) -> f a b) (fmap pure a) (fmap pure b))
 
 
-
 data ValidatorState = ValidatorState (Dict Type) (Map ([FunctionType], Type) Type) SexNode
     deriving (Show, Eq, Ord)
+
+callWithType :: [FunctionType] -> Type -> (Map ([FunctionType],Type) Type) -> Result Type
+callWithType functions inType previouslyCalled = if Map.member (functions,inType) previouslyCalled
+    then case previouslyCalled Map.! (functions,inType) of
+        Incomplete unknown known -> pure known
+        theType -> pure theType
+    else theType
+        where theType = foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (pure Any) mapped 
+                  where mapped = (map evaluate functions)
+                        evaluate (FunctionType paramName body scope) = getType state 
+                            where state = ValidatorState (Map.insert paramName inType scope) (Map.insert (functions,inType) (Incomplete theType Any) previouslyCalled) body
 
 getType :: ValidatorState -> Result Type
 getType (ValidatorState scope calledFunctions sexpression) =
