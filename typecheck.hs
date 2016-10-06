@@ -76,13 +76,20 @@ err e = Result $ Left [e]
 
 
 
+
 type Dict = Map String
 
 
 data FunctionType = FunctionType String SexNode (Dict Type)
     deriving (Show, Eq, Ord)
 
-data Type = Unit | Object (Dict Type) | Enum (Dict Type) | Function [FunctionType] | Incomplete (Result Type) Type | Any
+data Type = Unit
+          | Object (Dict Type)
+          | Enum (Dict Type)
+          | Function [FunctionType]
+          | Incomplete (Result Type) Type
+          | Any
+          | Base ([FunctionType], Type) Type -- base case of a certain function called with certain parameter
     deriving (Show, Eq, Ord)
 
 mergeExpTypes :: Type -> Type -> Result Type
@@ -93,10 +100,13 @@ mergeExpTypes other Any = pure other
 mergeExpTypes (Object a) (Object b) = Object <$> intersectMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Enum a) (Enum b) = Enum <$> uniteMapsOfTypesWith mergeExpTypes a b
 mergeExpTypes (Function a) (Function b) = pure (Function (a++b))
+mergeExpTypes (Incomplete unknownA knownA) (Incomplete unknownB knownB) = (Incomplete ((mergeExpTypes <$> unknownA) =<<* unknownB)) <$> mergeExpTypes knownA knownB
 mergeExpTypes (Incomplete unknown known) other = (Incomplete unknown) <$> mergeExpTypes known other
 mergeExpTypes other (Incomplete unknown known)= (Incomplete unknown) <$> mergeExpTypes other known
+mergeExpTypes (Base a) (Base b) = Base <$> mergeExpTypes a b
+mergeExpTypes (Base a) b = Base <$> mergeExpTypes a b
+mergeExpTypes a (Base b) = Base <$> mergeExpTypes a b
 mergeExpTypes a b = err $ "Cannot merge expression types '" ++ show a ++ "' and '" ++ show b ++ "'.\n"
-
 
 intersectMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 intersectMapsOfTypesWith f a b = sequenceA $ Map.intersectionWith f a b
@@ -104,20 +114,33 @@ intersectMapsOfTypesWith f a b = sequenceA $ Map.intersectionWith f a b
 uniteMapsOfTypesWith :: (Type -> Type -> Result Type) -> Dict Type -> Dict Type -> Result (Dict Type)
 uniteMapsOfTypesWith f a b = sequenceA ( Map.unionWith (\(Result (Right a)) -> \(Result (Right b)) -> f a b) (fmap pure a) (fmap pure b))
 
+-- This is used to get the "known" part of a type that might contain incomplete types
+getKnown :: Type -> Type -> Type
+getKnown (Incomplete unknown known) = getKnown known
+getKnown (Object a) = Object (fmap getKnown a)
+getKnown (Enum a) = Enum (fmap getKnown a)
+getKnown other = other
 
 data ValidatorState = ValidatorState (Dict Type) (Map ([FunctionType], Type) Type) SexNode
     deriving (Show, Eq, Ord)
 
 callWithType :: [FunctionType] -> Type -> (Map ([FunctionType],Type) Type) -> Result Type
-callWithType functions inType previouslyCalled = if Map.member (functions,inType) previouslyCalled
-    then case previouslyCalled Map.! (functions,inType) of
-        Incomplete unknown known -> pure known
-        theType -> pure theType
-    else theType
-        where theType = foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (pure Any) mapped 
-                  where mapped = (map evaluate functions)
-                        evaluate (FunctionType paramName body scope) = getType state 
-                            where state = ValidatorState (Map.insert paramName inType scope) (Map.insert (functions,inType) (Incomplete theType Any) previouslyCalled) body
+callWithType functions inType previouslyCalled =
+    case Map.lookup (functions,inType) previouslyCalled of
+      Just theType -> case getKnown theType of
+                        Any -> err $ "Recursive function " ++ show functions ++ " isn't valid."
+                        other -> pure (Base (functions,inType) other)
+
+      Nothing -> let base = foldl (\a -> \b -> ((mergeExpTypes <$> a) =<<* b)) (final) mapped 
+                     mapped = (map evaluateBase functions)
+                     evaluateBase (FunctionType paramName body scope) = getType stateForBase
+                     stateForBase = ValidatorState (Map.insert paramName inType scope) (Map.insert (functions,inType) (Incomplete base any) previouslyCalled) body
+                  in \base -> case base of
+                                Base (fs, inT) type ->
+                                    | (fs, inT) == (functions, inType) -> 
+                                        let result = 
+              
+
 
 getType :: ValidatorState -> Result Type
 getType (ValidatorState scope calledFunctions sexpression) =
