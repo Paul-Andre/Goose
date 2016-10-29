@@ -1,81 +1,10 @@
-import Data.Char
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Map.Lazy as Map.Lazy
 import qualified Debug.Trace
 
-
-
-data SexNode = List [SexNode] | Atom String
-    deriving (Show, Eq, Ord)
-
-skipWhile f [] = []
-skipWhile f (car:cdr) = if f car then skipWhile f cdr else car:cdr
-
-separateWhile f a = (takeWhile f a, skipWhile f a)
-
-removeBeginingSpace = skipWhile isSpace
-
-parseAtom :: String -> (String, String)
-parseAtom = separateWhile (\c -> not (isSpace c) && c /= ')' && c /= '(')
-
-parseList :: String -> ([SexNode], String)
-parseList [] = ([], "")
-parseList (')':cdr) = ([], cdr)
-parseList exp = (node:otherNodes , restOfExpression)
-    where (otherNodes, restOfExpression) = parseList (removeBeginingSpace remainderFromFirstNode)
-          (node, remainderFromFirstNode) = parseNode exp
-
-parseNode :: String -> (SexNode, String)
-parseNode ('(':cdr) = (List nodes, restOfExpression)
-    where (nodes, restOfExpression) = parseList (removeBeginingSpace cdr)
-
-parseNode exp = (Atom atom, restOfExpression)
-    where (atom, restOfExpression) = parseAtom exp
-
-          
-parseSexpression :: String -> SexNode
-parseSexpression = fst.parseNode.removeBeginingSpace
-
-parseSexpressionList :: String -> SexNode
-parseSexpressionList = (List).fst.parseList.removeBeginingSpace
-
-
-
-
-newtype Result a = Result { runResult :: Either [String] a }
-    deriving (Show, Eq, Ord)
-
-instance Functor (Result) where
-    fmap f (Result (Right a)) = Result $ Right $ f a
-    fmap _ (Result (Left es)) = Result $ Left es
-
-instance Applicative (Result) where
-    pure a = Result $ Right a
-    (Result f) <*> (Result a) = Result $
-        case (f, a) of
-          (Right f', Right a') -> Right $ f' a'
-          (Left fes, Left aes) -> Left $ fes ++ aes
-          (Left es, _) -> Left es
-          (_, Left es) -> Left es
-
-(Result f) =<<* (Result a) =
-    case (f, a) of
-      (Right f', Right a') -> f' a'
-      (Left fes, Left aes) -> Result $ Left $ fes ++ aes
-      (Left es, _) -> Result $ Left es
-      (_, Left es) -> Result $ Left es
-
-f =<<< (Result a) =
-    case a of
-      Right a' -> f a'
-      Left e -> Result $ Left $ e
-
-ok a = Result $ Right a
-err e = Result $ Left [e]
-
-
-
+import qualified Sexpression as Sex
+import Result
 
 type Dict = Map String
 
