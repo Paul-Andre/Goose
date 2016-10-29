@@ -140,8 +140,8 @@ rootGetType string = getType (ValidatorState Map.empty Map.empty (parseSexpressi
 -}
 
 --example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
---example = rootGetType "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) y)"
-example'' = AST.parse $ Sex.parse $ "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) (lambda f (choose ('a f) 'b)))"
+example = "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) y)"
+example'' = AST.parse $ Sex.parse $ example
 
 
 main = do putStrLn (show example'')

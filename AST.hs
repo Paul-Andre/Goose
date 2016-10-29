@@ -12,11 +12,10 @@ type Dict = Map String
 
 data Node = Unit
           | Identifier String
+          | Symbol String
           | Let {bindings :: Dict Node, body :: Node}
           | Letrec {bindings :: Dict Node, body :: Node}
           | Object (Dict Node)
-          | Lookup {property :: String, object :: Node}
-          | Enum {tag :: String, content :: Node}
           | Match (Dict Node)
           | Function {parameterName :: String, body :: Node}
           | Application {function :: Node, argument :: Node}
@@ -25,7 +24,7 @@ data Node = Unit
 
 parse :: Sex.Node -> Result Node
 
-parse (Sex.Atom ('\'':tag)) = pure Enum {tag=tag, content=Unit}
+parse (Sex.Atom ('\'':symbol)) = pure $ Symbol symbol
 parse (Sex.Atom name) = pure $ Identifier name
 parse (Sex.List []) = pure Unit
 
@@ -36,14 +35,7 @@ parse (Sex.List [firstWord, rest]) =
     case firstWord of
       Sex.Atom "object" -> Object <$> parseMap rest
       Sex.Atom "match" -> Match <$> parseMap rest
-      Sex.Atom ('\'':tag) -> do
-          parsedContent <- parse rest
-          return Enum {tag=tag, content=parsedContent}
-      Sex.Atom (':':tag) -> do
-          parsedContent <- parse rest
-          return Lookup {property=tag, object=parsedContent}
       firstWord -> Application <$> parse firstWord <*> parse rest
-
 
 parse (Sex.List [Sex.Atom "lambda", Sex.Atom paramName, body]) =
     Function paramName <$> parse body
@@ -55,7 +47,6 @@ parse (Sex.List [firstWord, second, third]) =
       _ -> err "Incorrect syntax for list of three values."
 
 parse node = err "Incorrect syntax in general"
-
       
 parseMap :: Sex.Node -> Result (Dict Node)
 parseMap (Sex.List list) = foldl (amLift2 addPairToMap) (pure Map.empty) (map parsePair list)
@@ -63,8 +54,15 @@ parseMap (Sex.List list) = foldl (amLift2 addPairToMap) (pure Map.empty) (map pa
 parsePair :: Sex.Node -> Result (String, Node)
 parsePair (Sex.List [Sex.Atom name, rest]) = do
     parsedContent <- parse(rest)
-    return (name, parsedContent)
+    return (dropOptionalTick name, parsedContent)
+
+parsePair (Sex.List [Sex.List [Sex.Atom name, Sex.Atom paramName], rest]) = do
+    parsedContent <- parse(rest)
+    return (dropOptionalTick name, Function paramName parsedContent)
+
 processPair _ = error "A pair isn't correct."
+
+dropOptionalTick = dropWhile (=='\'')
 
 addPairToMap :: Dict Node -> (String, Node) -> Result (Dict Node)
 addPairToMap dict (str, node) = if Map.notMember str dict
