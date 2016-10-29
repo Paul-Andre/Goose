@@ -1,4 +1,4 @@
-module Sexpression ( Node,
+module Sexpression ( Node(List,Atom),
                      parse,
                    )
     where

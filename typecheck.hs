@@ -5,10 +5,12 @@ import qualified Debug.Trace
 
 import qualified Sexpression as Sex
 import Result
+import qualified AST
 
 type Dict = Map String
 
 
+{-
 data FunctionType = FunctionType String SexNode (Dict Type)
     deriving (Show, Eq, Ord)
 
@@ -135,13 +137,11 @@ getType (ValidatorState scope calledFunctions sexpression) =
 
 rootGetType string = getType (ValidatorState Map.empty Map.empty (parseSexpression string))
 
+-}
 
-example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
-example'' = rootGetType "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) (lambda f (choose ('a f) 'b)))"
-example = rootGetType "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) y)"
+--example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
+--example = rootGetType "(let ((y (choose (lambda _ 'yes) (lambda _ 'no)))) y)"
+example'' = AST.parse $ Sex.parse $ "((lambda f ((lambda x (f (x x))) (lambda x (f (x x))))) (lambda f (choose ('a f) 'b)))"
 
-exampleCorrect = case example of
-                   (Result (Right _)) -> True
-                   _ -> False
 
 main = do putStrLn (show example'')

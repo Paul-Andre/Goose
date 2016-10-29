@@ -4,6 +4,7 @@ module AST ( Node,
     where
 
 import Data.Map (Map)
+import qualified Data.Map as Map
 import qualified Sexpression as Sex
 import Result
 
@@ -24,14 +25,14 @@ data Node = Unit
 
 parse :: Sex.Node -> Result Node
 
-parse Sex.Atom ('\'':tag) -> pure Enum {tag=tag, content=Unit}
-parse Sex.Atom name -> pure Identifier name
-parse Sex.List [] -> pure Unit
+parse (Sex.Atom ('\'':tag)) = pure Enum {tag=tag, content=Unit}
+parse (Sex.Atom name) = pure $ Identifier name
+parse (Sex.List []) = pure Unit
 
-parse Sex.List ((Sex.Atom "choose"):rest) =
-    Choose $ sequenceA $ map parse rest
+parse (Sex.List ((Sex.Atom "choose"):rest)) =
+    Choose <$> sequenceA (map parse rest)
 
-parse Sex.List [firstWord, rest] =
+parse (Sex.List [firstWord, rest]) =
     case firstWord of
       Sex.Atom "object" -> Object <$> parseMap rest
       Sex.Atom "match" -> Match <$> parseMap rest
@@ -43,26 +44,30 @@ parse Sex.List [firstWord, rest] =
           return Lookup {property=tag, object=parsedContent}
       firstWord -> Application <$> parse firstWord <*> parse rest
 
-parse Sex.List [firstWord, second, third] =
+
+parse (Sex.List [Sex.Atom "lambda", Sex.Atom paramName, body]) =
+    Function paramName <$> parse body
+
+parse (Sex.List [firstWord, second, third]) =
     case firstWord of
       Sex.Atom "let" -> Let <$> parseMap second <*> parse third
       Sex.Atom "letrec" -> Letrec <$> parseMap second <*> parse third
       _ -> err "Incorrect syntax for list of three values."
 
-parse _ -> "Incorrect syntax in general"
+parse node = err "Incorrect syntax in general"
 
       
 parseMap :: Sex.Node -> Result (Dict Node)
-parseMap Sex.List list = foldl (amLift2 addPairToMap) (pure Map.empty) (map parsePair list)
+parseMap (Sex.List list) = foldl (amLift2 addPairToMap) (pure Map.empty) (map parsePair list)
 
 parsePair :: Sex.Node -> Result (String, Node)
-parsePair Sex.List [Sex.Atom name, rest] = do
-    parsedContent <- parseAST(rest)
+parsePair (Sex.List [Sex.Atom name, rest]) = do
+    parsedContent <- parse(rest)
     return (name, parsedContent)
 processPair _ = error "A pair isn't correct."
 
 addPairToMap :: Dict Node -> (String, Node) -> Result (Dict Node)
 addPairToMap dict (str, node) = if Map.notMember str dict
-                                   then pure $ Map.insert key value map
+                                   then pure $ Map.insert str node dict
                                    else err $ "Key '"++str++"' defined multiple times"
 

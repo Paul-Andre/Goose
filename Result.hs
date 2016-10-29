@@ -19,13 +19,11 @@ instance Applicative (Result) where
 
 instance Monad (Result) where
     return a = Result $ Right a
-    (Result a) >>= (Result f) =
-        case (f, a) of
-          (Right f', Right a') -> f' a'
-          (Left fes, Left aes) -> Result $ Left $ fes ++ aes
-          (Left es, _) -> Result $ Left es
-          (_, Left es) -> Result $ Left es
-    failure e = Result $ Left [e]
+    (Result a) >>= f =
+        case a of
+          Right a' -> f a'
+          Left es -> Result $ Left es
+    fail e = Result $ Left [e]
 
 err e = Result $ Left [e]
 
