@@ -1,4 +1,4 @@
-module AST ( Node,
+module AST ( Node(..),
              parse
            )
     where
@@ -60,7 +60,7 @@ parsePair (Sex.List [Sex.List [Sex.Atom name, Sex.Atom paramName], rest]) = do
     parsedContent <- parse(rest)
     return (dropOptionalTick name, Function paramName parsedContent)
 
-processPair _ = error "A pair isn't correct."
+parsePair _ = error "A pair isn't correct."
 
 dropOptionalTick = dropWhile (=='\'')
 
