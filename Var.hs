@@ -48,8 +48,36 @@ eval (AST.Object object) = do
      in 
         pure $ evaluatedObject
 
+eval (AST.Function paramName body) = do
+    env <- Reader.ask
+    pure $ pure $Function { environment=env, paramName=paramName, body=body }
+
+eval (AST.Application func arg) = do
+    func' <- eval func
+    arg' <- eval arg
+    pure $ (amLift2 evalApplication) func' arg'
+
 eval (AST.Choose _) = pure $ err $"Choose isn't meant to be evaluated"
 eval node = pure $ err $"Evaluation of "++(show node)++" isn't implemented yet"
+
+
+evalApplication :: Var -> Var -> Result Var
+evalApplication (TaggedVar tv) v = pure $ TaggedVar $ Tagged (tv) v 
+evalApplication (Object o) (TaggedVar (Symbol s)) =
+    case Map.lookup s o of
+      Just(v) -> pure v
+      Nothing -> err $ "Object "++(show o)++" doesn't contain \""++s++"\"."
+
+evalApplication (Object o) (TaggedVar (Tagged tag var)) = do
+    firstApplication <- evalApplication (Object o) (TaggedVar tag)
+    evalApplication firstApplication var
+
+evalApplication (Function env pn b) v =
+    let newEnv = Map.insert pn v env
+     in Reader.runReader (eval b) newEnv
+
+evalApplication a b = err $ "Cannot apply "++(show a)++" on "++(show b)++"."
+
 
 evalMap :: (Dict AST.Node) -> Reader.Reader (Dict Var) (Result (Dict Var))
 evalMap map = (fmap sequenceA $ sequenceA $ fmap eval map)

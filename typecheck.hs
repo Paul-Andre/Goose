@@ -10,9 +10,7 @@ import qualified Var
 
 type Dict = Map String
 
---example' = rootGetType "(let ((y (lambda f ((lambda x (f (x x))) (lambda x (f (x x))))))) (y 'a))"
-example = "(object (a ()))"
+example = "((object ((a b) b) ) (('a ()) 'a) )"
 example'' = Var.actualEval =<<( AST.parse $ Sex.parse $ example)
-
 
 main = do putStrLn (show example'')
