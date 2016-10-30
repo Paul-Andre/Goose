@@ -43,19 +43,25 @@ eval (AST.Let bindings body) = do
             \nb -> Reader.runReader (eval body) (Map.union nb env)
 
 eval (AST.Object object) = do
-    env <- Reader.ask
-    let evaluatedObject = Object <$> Reader.runReader (evalMap object) env
-     in 
-        pure $ evaluatedObject
+    evaluatedObject <- evalMap object
+    pure $ Object <$>  evaluatedObject
 
 eval (AST.Function paramName body) = do
     env <- Reader.ask
-    pure $ pure $Function { environment=env, paramName=paramName, body=body }
+    pure $ pure $ Function { environment=env, paramName=paramName, body=body }
 
 eval (AST.Application func arg) = do
     func' <- eval func
     arg' <- eval arg
     pure $ (amLift2 evalApplication) func' arg'
+
+eval (AST.Match var branches) = do
+    func' <- eval var
+    -- The branches can be evaluated since the way match works now, it's
+    -- practically just sugar for creating an object containing functions and
+    -- applying it to var.
+    arg' <- evalMap branches
+    pure $ (amLift2 evalApplication) (Object <$> arg') func'
 
 eval (AST.Choose _) = pure $ err $"Choose isn't meant to be evaluated"
 eval node = pure $ err $"Evaluation of "++(show node)++" isn't implemented yet"
