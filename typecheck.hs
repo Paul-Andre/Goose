@@ -10,7 +10,7 @@ import qualified Var
 
 type Dict = Map String
 
-example = "(match ('a 'f) (('a e) e) ('c 'd))"
+example = "(letrec (((a b) (b b)) (b a)) a)"
 example'' = Var.actualEval =<<( AST.parse $ Sex.parse $ example)
 
 main = do putStrLn (show example'')

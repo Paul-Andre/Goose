@@ -22,15 +22,20 @@ data Var = Unit
                      paramName :: String,
                      body :: AST.Node
                     }
+         | Dummy (Result Var)
         deriving (Show, Eq, Ord)
 
+
 eval :: AST.Node -> Reader.Reader (Dict Var) (Result Var)
+
 eval AST.Unit = pure $ pure Unit
+
 eval (AST.Identifier s) = do
     env <- Reader.ask
     case Map.lookup s env of
-      Just(var) -> pure $ pure var
-      Nothing -> pure $ err $ "Couldn't find variable \""++s++"\"."
+      Just(Dummy dum) -> pure $ dum
+      Just(var) -> pure $ pure $ var
+      Nothing -> pure $ err $ "Couldn't find variable "++s++"."
 
 eval (AST.Symbol s) = pure $ pure $ TaggedVar $ Symbol s
 
@@ -38,9 +43,16 @@ eval (AST.Let bindings body) = do
     env <- Reader.ask
     let newBindings = Reader.runReader (evalMap bindings) env
         newBindings :: Result (Dict Var)
+
      in 
         pure $ newBindings >>=
             \nb -> Reader.runReader (eval body) (Map.union nb env)
+
+eval (AST.Letrec bindings body) = do
+    env <- Reader.ask
+    let newBindings = Reader.runReader (evalMapLoose bindings) (Map.union newBindings env)
+     in 
+        pure $ Reader.runReader (eval body) (Map.union newBindings env)
 
 eval (AST.Object object) = do
     evaluatedObject <- evalMap object
@@ -91,3 +103,5 @@ evalMap map = (fmap sequenceA $ sequenceA $ fmap eval map)
 actualEval :: AST.Node -> Result Var
 actualEval node  = Reader.runReader (eval node) Map.empty
 
+evalMapLoose :: (Dict AST.Node) -> Reader.Reader (Dict Var) (Dict Var)
+evalMapLoose map = (fmap (fmap Dummy)) $ sequenceA $ fmap eval map
