@@ -1,0 +1,10 @@
+(letrec
+  ((add (lambda a (lambda b
+					(match a
+						   ('z b)
+						   (('s a') ((add a') ('s b))))))))
+  (let ((2 ('s ('s 'z))))
+	((add 2) 2)))
+
+"This example calculates 2+2"
+

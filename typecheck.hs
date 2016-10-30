@@ -1,16 +1,16 @@
-import Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.Map.Lazy as Map.Lazy
-import qualified Debug.Trace
+import System.IO
+import System.Environment
 
 import qualified Sexpression as Sex
 import Result
 import qualified AST
 import qualified Var
 
-type Dict = Map String
 
-example = "(letrec (((a b) (b b)) (b a)) a)"
-example'' = Var.actualEval =<<( AST.parse $ Sex.parse $ example)
+process s = Var.actualEval =<<( AST.parse $ Sex.parse $ s)
 
-main = do putStrLn (show example'')
+main :: IO ()
+main = do
+    args <- getArgs
+    contents <- if args==[] then getContents else readFile (head args)
+    putStrLn $ show $ process contents
