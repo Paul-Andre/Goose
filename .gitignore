@@ -1,3 +1,4 @@
-main.hi
-main.o
+*.o
+*.hi
 main
+typecheck
