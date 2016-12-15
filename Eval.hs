@@ -5,7 +5,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Control.Monad.Reader as Reader
 
-import qualified AST
+import qualified Parsing.AST as AST
 import Result
 
 type Dict = Map String

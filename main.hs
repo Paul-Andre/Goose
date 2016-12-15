@@ -1,9 +1,9 @@
 import System.IO
 import System.Environment
 
-import qualified SExpression as SExp
+import qualified Parsing.SExpression as SExp
 import Result
-import qualified AST
+import qualified Parsing.AST as AST
 import qualified Eval
 
 
