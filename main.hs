@@ -1,13 +1,13 @@
 import System.IO
 import System.Environment
 
-import qualified Sexpression as Sex
+import qualified SExpression as SExp
 import Result
 import qualified AST
 import qualified Eval
 
 
-process s = Eval.actualEval =<<( AST.parse $ Sex.parse $ s)
+process s = Eval.actualEval =<<( AST.parse $ SExp.parse $ s)
 
 main :: IO ()
 main = do

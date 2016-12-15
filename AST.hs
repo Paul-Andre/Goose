@@ -5,7 +5,7 @@ module AST ( Node(..),
 
 import Data.Map (Map)
 import qualified Data.Map as Map
-import qualified Sexpression as Sex
+import qualified SExpression as SExp
 import Result
 
 type Dict = Map String
@@ -22,41 +22,41 @@ data Node = Unit
           | Choose [Node]
           deriving (Show, Eq, Ord)
 
-parse :: Sex.Node -> Result Node
+parse :: SExp.Node -> Result Node
 
-parse (Sex.Atom ('\'':symbol)) = pure $ Symbol symbol
-parse (Sex.Atom name) = pure $ Identifier name
-parse (Sex.List []) = pure Unit
+parse (SExp.Atom ('\'':symbol)) = pure $ Symbol symbol
+parse (SExp.Atom name) = pure $ Identifier name
+parse (SExp.List []) = pure Unit
 
-parse (Sex.List ((Sex.Atom "choose"):rest)) =
+parse (SExp.List ((SExp.Atom "choose"):rest)) =
     Choose <$> sequenceA (map parse rest)
 
-parse (Sex.List ((Sex.Atom "object"):rest)) = Object <$> parseMap rest
-parse (Sex.List ((Sex.Atom "match"):variable:rest)) =
+parse (SExp.List ((SExp.Atom "object"):rest)) = Object <$> parseMap rest
+parse (SExp.List ((SExp.Atom "match"):variable:rest)) =
     Match <$> parse variable <*> parseMap rest
 
-parse (Sex.List [firstWord, rest]) = Application <$> parse firstWord <*> parse rest
+parse (SExp.List [firstWord, rest]) = Application <$> parse firstWord <*> parse rest
 
-parse (Sex.List [Sex.Atom "lambda", Sex.Atom paramName, body]) =
+parse (SExp.List [SExp.Atom "lambda", SExp.Atom paramName, body]) =
     Function paramName <$> parse body
 
-parse (Sex.List [firstWord, (Sex.List second), third]) =
+parse (SExp.List [firstWord, (SExp.List second), third]) =
     case firstWord of
-      Sex.Atom "let" -> Let <$> parseMap second <*> parse third
-      Sex.Atom "letrec" -> Letrec <$> parseMap second <*> parse third
+      SExp.Atom "let" -> Let <$> parseMap second <*> parse third
+      SExp.Atom "letrec" -> Letrec <$> parseMap second <*> parse third
       _ -> err "Incorrect syntax for list of three values."
 
 parse _ = err "Incorrect syntax in general"
       
-parseMap :: [Sex.Node] -> Result (Dict Node)
+parseMap :: [SExp.Node] -> Result (Dict Node)
 parseMap list = foldl (amLift2 addPairToMap) (pure Map.empty) (map parsePair list)
 
-parsePair :: Sex.Node -> Result (String, Node)
-parsePair (Sex.List [Sex.Atom name, rest]) = do
+parsePair :: SExp.Node -> Result (String, Node)
+parsePair (SExp.List [SExp.Atom name, rest]) = do
     parsedContent <- parse(rest)
     return (dropOptionalTick name, parsedContent)
 
-parsePair (Sex.List [Sex.List [Sex.Atom name, Sex.Atom paramName], rest]) = do
+parsePair (SExp.List [SExp.List [SExp.Atom name, SExp.Atom paramName], rest]) = do
     parsedContent <- parse(rest)
     return (dropOptionalTick name, Function paramName parsedContent)
 
