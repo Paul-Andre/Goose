@@ -3,28 +3,38 @@ module Parsing.SExpression ( Node(List,Atom),
                    )
     where
 
-import Text.ParserCombinators.Parsec as Parsec
 import Data.Char
 
 data Node = List [Node] | Atom String
     deriving (Show, Eq, Ord)
 
+skipWhile f [] = []
+skipWhile f (car:cdr) = if f car then skipWhile f cdr else car:cdr
 
-parser = do
-    c <- anyChar
-    pure Atom([c])
+separateWhile f a = (takeWhile f a, skipWhile f a)
 
-{--
-listParser = do
-    char '('
-    ret <- sepBy parser (many1 (satisfy isSpace))
-    char ')'
-    return (List ret)
+removeBeginingSpace = skipWhile isSpace
 
-atomParser = fmap Atom $ many (noneOf (satisfy isSpace))
---}
+parseAtom :: String -> (String, String)
+parseAtom = separateWhile (\c -> not (isSpace c) && c /= ')' && c /= '(')
 
-parse input = Parsec.parse parser "{u}" input
+parseList :: String -> ([Node], String)
+parseList [] = ([], "")
+parseList (')':cdr) = ([], cdr)
+parseList exp = (node:otherNodes , restOfExpression)
+    where (otherNodes, restOfExpression) = parseList (removeBeginingSpace remainderFromFirstNode)
+          (node, remainderFromFirstNode) = parseNode exp
 
---parseSExpressionList :: String -> Node
---parseSExpressionList = (List).fst.parseList.removeBeginingSpace
+parseNode :: String -> (Node, String)
+parseNode ('(':cdr) = (List nodes, restOfExpression)
+    where (nodes, restOfExpression) = parseList (removeBeginingSpace cdr)
+
+parseNode exp = (Atom atom, restOfExpression)
+    where (atom, restOfExpression) = parseAtom exp
+
+          
+parse :: String -> Node
+parse = fst.parseNode.removeBeginingSpace
+
+parseSExpressionList :: String -> Node
+parseSExpressionList = (List).fst.parseList.removeBeginingSpace
